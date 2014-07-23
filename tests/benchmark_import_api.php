@@ -17,8 +17,88 @@
 
 require_once 'app/Mage.php';
 
+/**
+ * Give you bulks of entities calculated with NUM_ROWS_BY_CALL
+ *
+ * @param $entities
+ *
+ * @return array
+ */
+function getBulksOfEntities($entities)
+{
+    $bulks = array();
+    if (count($entities) <= NUM_ROWS_BY_CALL || !NUM_ROWS_BY_CALL) {
+        $bulks[] = $entities;
+    } else {
+        $bulks = array_chunk($entities, NUM_ROWS_BY_CALL);
+    }
+
+    return $bulks;
+}
+
+/**
+ * Gives lines mapped to skus
+ *
+ * @param $entities
+ *
+ * @return array
+ */
+function getMappedSku($entities)
+{
+    $mappedSku = array();
+    $previousSku = '';
+    foreach ($entities as $key => $entity) {
+        if (isset($entity['sku']) && !empty($entity['sku'])) {
+            $mappedSku[$key] = $entity['sku'];
+            $previousSku     = $entity['sku'];
+        } else {
+            $mappedSku[$key] = 'Associated to previous sku ' . $previousSku;
+        }
+    }
+
+    return $mappedSku;
+}
+
+/**
+ * Get failed skus associated with error
+ *
+ * @param array $errors
+ * @param array $mappedSku
+ *
+ * @return array[sku => error]
+ */
+function getFailedSkus(array $errors, array $mappedSku)
+{
+    $failedSkus = array();
+    foreach ($errors as $error => $failedRows) {
+        foreach ($failedRows as $row) {
+            $failedSkus[$mappedSku[$row]] = $error;
+        }
+    }
+
+    return $failedSkus;
+}
+
+/**
+ * Prints failed skus
+ *
+ * @param array $failedSkus
+ *
+ * @return void
+ */
+function printFailedSkus(array $failedSkus)
+{
+    foreach ($failedSkus as $sku => $error) {
+        printf("$sku : $error" . PHP_EOL);
+    }
+}
+
 Mage::init();
 
+//define('NUM_ENTITIES', 20);
+//define('NUM_ROWS_BY_CALL', 10);
+//define('API_USER', 'soap');
+//define('API_KEY', 'magento1');
 define('NUM_ENTITIES', 5000);
 define('NUM_ROWS_BY_CALL', false);
 define('API_USER', 'apiUser');
@@ -54,6 +134,7 @@ $entityTypes = array(
         'model'  => 'catalog/product',
         'types'  => array(
             'simple',
+            'simpleFail',
             'configurable',
             'bundle',
             'grouped',
@@ -91,28 +172,33 @@ foreach ($entityTypes as $typeName => $entityType) {
         $totalTime = microtime(true);
 
         if (USE_API) {
-            $data = array();
+            $bulks = getBulksOfEntities($entities);
+            $failedSkus = array();
 
-            if (count($entities) <= NUM_ROWS_BY_CALL || !NUM_ROWS_BY_CALL) {
-                $data[] = $entities;
-            } else {
-                $data = array_chunk($entities, NUM_ROWS_BY_CALL);
-            }
-
-            try {
-                foreach($data as $bulk) {
-                    $client->call($session, 'import.importEntities', array($bulk, $entityType['entity'], $entityType['behavior']));
+            foreach($bulks as $bulk) {
+                $mappedSkus = getMappedSku($bulk);
+                try {
+                    $client->call($session, 'import.importEntities', array($bulk, $entityType['entity']));
+                } catch(Exception $e) {
+                    $failedSkus = array_merge($failedSkus, getFailedSkus(unserialize($e->getMessage()), $mappedSkus));
                 }
             }
-            catch(Exception $e) {
-                printf('Import failed: ' . PHP_EOL, $e->getMessage());
-                var_dump($e);
+            if (!empty($failedSkus)) {
+                printFailedSkus($failedSkus);
                 exit;
             }
         } else {
-            // For debugging purposes only.
-            Mage::getModel('api_import/import_api')->importEntities($entities, $entityType['entity']);
+            // For debugging purposes only
+            $mappedSkus = getMappedSku($entities);
+            try {
+                Mage::getModel('api_import/import_api')->importEntities($entities, $entityType['entity'], 'append');
+            } catch(Exception $e) {
+                $failedSkus = getFailedSkus(unserialize($e->getCustomMessage()), $mappedSkus);
+                printFailedSkus($failedSkus);
+                exit;
+            }
         }
+
         printf('Done! Magento reports %d %s.' . PHP_EOL, count($entities), 'rows');
         $totalTime = microtime(true) - $totalTime;
 
