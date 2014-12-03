@@ -95,10 +95,6 @@ function printFailedSkus(array $failedSkus)
 
 Mage::init();
 
-//define('NUM_ENTITIES', 20);
-//define('NUM_ROWS_BY_CALL', 10);
-//define('API_USER', 'soap');
-//define('API_KEY', 'magento1');
 define('NUM_ENTITIES', 5000);
 define('NUM_ROWS_BY_CALL', false);
 define('API_USER', 'apiUser');
@@ -120,8 +116,11 @@ if (USE_API) {
         'keep_alive' => 1
     );
 
-    try{
-        $client = new SoapClient(Mage::getBaseUrl(Mage_Core_Model_Store::URL_TYPE_WEB) . 'index.php/api/soap/?wsdl', $soapOptions);
+    try {
+        $client = new SoapClient(
+            Mage::getBaseUrl(Mage_Core_Model_Store::URL_TYPE_WEB) . 'index.php/api/soap/?wsdl',
+            $soapOptions
+        );
         $session = $client->login(API_USER, API_KEY);
     } catch (Exception $e) {
         echo 'Exception :' . $e->getMessage();
@@ -140,6 +139,27 @@ $entityTypes = array(
             'grouped',
             'image',
             'localizable'
+        ),
+        'behavior' => 'append'
+    ),
+    'attributeSets' => array(
+        'entity' => 'attributeSets',
+        'types'  => array(
+            'standard'
+        ),
+        'behavior' => 'append'
+    ),
+    'attributes' => array(
+        'entity' => 'attributes',
+        'types'  => array(
+            'standard'
+        ),
+        'behavior' => 'append'
+    ),
+    'attributeAssociations' => array(
+        'entity' => 'attributeAssociations',
+        'types'  => array(
+            'standard'
         ),
         'behavior' => 'append'
     ),
@@ -175,30 +195,60 @@ foreach ($entityTypes as $typeName => $entityType) {
             $bulks = getBulksOfEntities($entities);
             $failedSkus = array();
 
-            foreach($bulks as $bulk) {
-                $mappedSkus = getMappedSku($bulk);
+           if ('attributeSets' === $entityType['entity']
+               || 'attributes' === $entityType['entity']
+               || 'attributeAssociations' === $entityType['entity']
+           ) {
+               try {
+                   foreach ($bulks as $bulk) {
+                       $client->call(
+                           $session,
+                           'import.import' . ucfirst($entityType['entity']),
+                           array(
+                               $bulk,
+                               $entityType['behavior']
+                           )
+                       );
+                   }
+               } catch (Exception $e) {
+                   printf('Import failed: ' . PHP_EOL, $e->getMessage());
+                   var_dump($e);
+                   exit;
+               }
+           } else {
+               foreach($bulks as $bulk) {
+                   $mappedSkus = getMappedSku($bulk);
+                   try {
+                       $client->call($session, 'import.importEntities', array($bulk, $entityType['entity']));
+                   } catch (Exception $e) {
+                       $failedSkus = array_merge($failedSkus, getFailedSkus(unserialize($e->getMessage()), $mappedSkus));
+                   }
+               }
+               if (!empty($failedSkus)) {
+                   printFailedSkus($failedSkus);
+                   exit;
+               }
+           }
+        } else {
+            if ('attributeSets' === $entityType['entity']
+                || 'attributes' === $entityType['entity']
+                || 'attributeAssociations' === $entityType['entity']
+            ) {
+                $method = 'import' . ucfirst($entityType['entity']);
+                // For debugging purposes only.
+                Mage::getModel('api_import/import_api')->$method($entities, $entityType['behavior']);
+
+            } else {
+                $mappedSkus = getMappedSku($entities);
                 try {
-                    $client->call($session, 'import.importEntities', array($bulk, $entityType['entity']));
+                    Mage::getModel('api_import/import_api')->importEntities($entities, $entityType['entity'], 'append');
                 } catch(Exception $e) {
-                    $failedSkus = array_merge($failedSkus, getFailedSkus(unserialize($e->getMessage()), $mappedSkus));
+                    $failedSkus = getFailedSkus(unserialize($e->getCustomMessage()), $mappedSkus);
+                    printFailedSkus($failedSkus);
+                    exit;
                 }
             }
-            if (!empty($failedSkus)) {
-                printFailedSkus($failedSkus);
-                exit;
-            }
-        } else {
-            // For debugging purposes only
-            $mappedSkus = getMappedSku($entities);
-            try {
-                Mage::getModel('api_import/import_api')->importEntities($entities, $entityType['entity'], 'append');
-            } catch(Exception $e) {
-                $failedSkus = getFailedSkus(unserialize($e->getCustomMessage()), $mappedSkus);
-                printFailedSkus($failedSkus);
-                exit;
-            }
         }
-
         printf('Done! Magento reports %d %s.' . PHP_EOL, count($entities), 'rows');
         $totalTime = microtime(true) - $totalTime;
 
