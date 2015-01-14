@@ -37,6 +37,11 @@ class Danslo_ApiImport_Model_Import_Api
     protected $_catalogProductEntityTypeId;
 
     /**
+     * @var array
+     */
+    protected $_errors;
+
+    /**
      * Sets up the import model and loads area parts.
      *
      * @return void
@@ -65,11 +70,6 @@ class Danslo_ApiImport_Model_Import_Api
         $this->_api->getDataSourceModel()->setEntities($entities);
         try {
             $result = $this->_api->importSource();
-            $errorsCount = $this->_api->getErrorsCount();
-            if ($errorsCount > 0) {
-                Mage::throwException("There were {$errorsCount} errors during the import process." .
-                    "Please be aware that valid entities were still imported.");
-            };
         } catch(Mage_Core_Exception $e) {
             $this->_fault('import_failed', $e->getMessage());
         }
@@ -82,8 +82,8 @@ class Danslo_ApiImport_Model_Import_Api
      *
      * @param array  $data
      * @param string $behavior
-     *
      * @return true
+     * @throws Mage_Api_Exception
      */
     public function importAttributes(array $data, $behavior = null)
     {
@@ -95,19 +95,22 @@ class Danslo_ApiImport_Model_Import_Api
         if (Danslo_ApiImport_Model_Import::BEHAVIOR_DELETE_IF_NOT_EXIST === $behavior) {
             $this->_pruneAttributes($data);
         } else {
-            foreach ($data as $attribute) {
-                if (isset($attribute['attribute_id'])) {
-                    $attributeCode = $attribute['attribute_id'];
-                    unset($attribute['attribute_id']);
+            foreach ($data as $key => $attribute) {
+                $this->_validateAttributeData($attribute, $key, $behavior);
+                $attributeCode = $attribute['attribute_id'];
+                unset($attribute['attribute_id']);
 
-                    if (Mage_ImportExport_Model_Import::BEHAVIOR_REPLACE === $behavior
-                        || Mage_ImportExport_Model_Import::BEHAVIOR_APPEND === $behavior) {
-                        $this->_setup->addAttribute($this->_catalogProductEntityTypeId, $attributeCode, $attribute);
-                    } elseif (Mage_ImportExport_Model_Import::BEHAVIOR_DELETE === $behavior) {
-                        $this->_setup->removeAttribute($this->_catalogProductEntityTypeId, $attributeCode);
-                    }
+                if (Mage_ImportExport_Model_Import::BEHAVIOR_REPLACE === $behavior
+                    || Mage_ImportExport_Model_Import::BEHAVIOR_APPEND === $behavior) {
+                    $this->_setup->addAttribute($this->_catalogProductEntityTypeId, $attributeCode, $attribute);
+                } elseif (Mage_ImportExport_Model_Import::BEHAVIOR_DELETE === $behavior) {
+                    $this->_setup->removeAttribute($this->_catalogProductEntityTypeId, $attributeCode);
                 }
             }
+        }
+
+        if (count($this->_errors) > 0) {
+            throw new Mage_Api_Exception('import_failed', json_encode($this->_errors));
         }
 
         return true;
@@ -176,6 +179,127 @@ class Danslo_ApiImport_Model_Import_Api
     {
         $this->_setup = new Mage_Catalog_Model_Resource_Eav_Mysql4_Setup('catalog_product_attribute_set');
         $this->_catalogProductEntityTypeId = $this->_setup->getEntityTypeId(Mage_Catalog_Model_Product::ENTITY);
+    }
+
+    /**
+     * Allows to validate attribute data
+     *
+     * @param array  $attribute
+     * @param int    $id
+     * @param string $behavior
+     */
+    protected function _validateAttributeData(array $attribute, $id, $behavior)
+    {
+        switch ($behavior) {
+            case Mage_ImportExport_Model_Import::BEHAVIOR_REPLACE:
+            case Mage_ImportExport_Model_Import::BEHAVIOR_APPEND:
+                // foreach data as attribute
+                $this->_validateAttributeRequiredValues($attribute, $id);
+                $this->_validateAttributeBooleanValues($attribute, $id);
+
+                if ('select' === $attribute['input'] || 'multiselect' === $attribute['input'] &&
+                    isset($attribute['option'])
+                ) {
+                    $this->_validateAttributeOption($attribute['option'], $id);
+                }
+            break;
+        }
+    }
+
+    /**
+     * Validate if attribute has no missing values
+     *
+     * @param array $attribute
+     * @param int   $id
+     */
+    protected function _validateAttributeRequiredValues(array $attribute, $id)
+    {
+        $requiredValues = array('attribute_id', 'type', 'label', 'global', 'required', 'visible_on_front');
+        $missingValueMessage = sprintf('One of these required value is missing : %s.', implode(', ', $requiredValues));
+        $isValueMissing      = false;
+
+        while ((list($key, $requiredValue) = each($requiredValues)) && false === $isValueMissing) {
+            if (!isset($attribute[$requiredValue])) {
+                $this->_errors[$missingValueMessage][] = $id;
+                $isValueMissing = true;
+            }
+        }
+    }
+
+    /**
+     * Validate if attribute boolean values are boolean
+     *
+     * @param array $attribute
+     * @param int   $id
+     */
+    protected function _validateAttributeBooleanValues(array $attribute, $id)
+    {
+        $booleanValues    = array(
+            'global', 'required', 'visible_on_front', 'unique', 'user_defined', 'is_user_defined', 'visible',
+            'searchable', 'filterable', 'is_filterable_in_search', 'used_for_sort_by', 'used_in_product_listing',
+            'comparable'
+        );
+        $boolErrorMessage = sprintf('One of these value must be boolean : %s.', implode(', ', $booleanValues));
+        $isValueBoolean   = true;
+
+        while ((list($key, $boolValue) = each($booleanValues)) && true === $isValueBoolean) {
+            if (isset($attribute[$boolValue]) && !is_bool($attribute[$boolValue])) {
+                $this->_errors[$boolErrorMessage][] = $id;
+                $isValueBoolean = false;
+            }
+        }
+    }
+
+    /**
+     * Validate if attribute options are well formed
+     *
+     * @param array $options
+     * @param int   $id
+     */
+    protected function _validateAttributeOption(array $options, $id)
+    {
+        $format  =
+            '"option" => ["value" => ["option code" => [store ID => "label"]], ' .
+            '"order" => ["option code" => order]]';
+        $invalidOptionFormat = 'Select or multiselect attribute types must have data as ' . $format;
+        $optionCodeError     = 'Option code need to be a string in ' . $format;
+        $storeIdError        = 'Store id must be of type integer in ' . $format;
+        $labelError          = 'Label must be of type string in ' . $format;
+        $orderError          = 'Order must be of type integer in ' . $format;
+
+        if (!is_array($options) || !isset($options['value']) || !isset($options['order'])) {
+            $this->_errors[$invalidOptionFormat][] = $id;
+            return;
+        }
+
+        $values = $options['value'];
+        foreach ($values as $optionCode => $option) {
+            if (!is_string($optionCode)) {
+                $this->_errors[$optionCodeError][] = $id;
+            }
+            if (!is_array($option)) {
+                $this->_errors[$invalidOptionFormat][] = $id;
+            } else {
+                foreach ($option as $storeId => $label) {
+                    if (!is_int($storeId)) {
+                        $this->_errors[$storeIdError][] = $id;
+                    }
+                    if (!is_string($label)) {
+                        $this->_errors[$labelError][] = $id;
+                    }
+                }
+            }
+        }
+
+        $orders = $options['order'];
+        foreach ($orders as $optionCode => $order) {
+            if (!is_string($optionCode)) {
+                $this->_errors[$optionCodeError][] = $id;
+            }
+            if (!is_int($order) || null === $order) {
+                $this->_errors[$orderError][] = $id;
+            }
+        }
     }
 
     /**

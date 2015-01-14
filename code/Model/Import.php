@@ -94,13 +94,15 @@ class Danslo_ApiImport_Model_Import
             $this->addLogComment($errorCode . ' ' . Mage::helper('importexport')->__('in rows') . ': ' . implode(', ', $rows));
         }
 
+        // For some reasons Magento decrements indexes, so indexes of send data are not the good one in $errors
+        // We re-increment them to recover good indexes
         if (!empty($errors)) {
             foreach ($errors as &$error) {
                 foreach ($error as &$row) {
                     $row -= 2;
                 }
             }
-            throw new Mage_Core_Exception(serialize($errors));
+            throw new Mage_Core_Exception(json_encode($errors));
         }
 
         return $result;

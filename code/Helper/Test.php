@@ -199,7 +199,7 @@ class Danslo_ApiImport_Helper_Test
                 'user_defined'            => true,
                 'is_user_defined'         => true,
                 'required'                => false,
-                'global'                  => 1,
+                'global'                  => true,
                 'visible'                 => true,
                 'visible_on_front'        => true,
                 'searchable'              => true,
@@ -288,7 +288,7 @@ class Danslo_ApiImport_Helper_Test
                 'qty'    => rand(1, 30)
             );
         }
-//die(var_dump(array_merge($products, $moreProducts)));
+
         return array_merge($products, $moreProducts);
     }
 
@@ -361,107 +361,6 @@ class Danslo_ApiImport_Helper_Test
         }
 
         return $products;
-    }
-
-    /**
-     * Export price mapping configurables
-     *
-     * @param $trolol
-     *
-     * @return array
-     */
-    public function generateRandomCustoProduct($trolol)
-    {
-        $myProducts = [
-            1 => [
-                'description'       => 'Some description',
-                '_attribute_set'    => 'Default',
-                'short_description' => 'Some short description',
-                '_product_websites' => 'base',
-                'status'       => 1,
-                'visibility'   => 4,
-                'tax_class_id' => 0,
-                'is_in_stock'  => 1,
-                'sku'          => 'some_sku_1',
-                '_type'        => 'simple',
-                'name'         => 'Some product ( 1 )',
-                'price'        => 30,
-                'weight'       => 200,
-                'qty'          => 23,
-                'color'        => 'red'
-            ],
-            2 => [
-                'description'       => 'Some description',
-                '_attribute_set'    => 'Default',
-                'short_description' => 'Some short description',
-                '_product_websites' => 'base',
-                'status'       => 1,
-                'visibility'   => 4,
-                'tax_class_id' => 0,
-                'is_in_stock'  => 1,
-                'sku'          => 'some_sku_2',
-                '_type'        => 'simple',
-                'name'         => 'Some product ( 2 )',
-                'price'        => 10,
-                'weight'       => 200,
-                'qty'          => 23,
-                'color'        => 'yellow'
-            ],
-            3 => [
-                'description'       => 'Some description',
-                '_attribute_set'    => 'Default',
-                'short_description' => 'Some short description',
-                '_product_websites' => 'base',
-                'status'       => 1,
-                'visibility'   => 4,
-                'tax_class_id' => 0,
-                'is_in_stock'  => 1,
-                'sku'          => 'some_sku_3',
-                '_type'        => 'simple',
-                'name'         => 'Some product ( 3 )',
-                'price'        => 15,
-                'weight'       => 200,
-                'qty'          => 24,
-                'color'        => 'green'
-            ],
-        ];
-
-        $myConfigurable = [
-            1 => [
-                'description'       => 'Some description',
-                '_attribute_set'    => 'Default',
-                'short_description' => 'Some short description',
-                '_product_websites' => 'base',
-                'status'            => 1,
-                'visibility'        => 4,
-                'tax_class_id'      => 0,
-                'is_in_stock'       => 1,
-                'sku'    => 'some_configurable_1',
-                '_type'  => 'configurable',
-                'name'   => 'Some configurable ( 1 )',
-                'price'  => 25,
-                'weight' => 20,
-                '_super_products_sku'     => 'some_sku_1',
-                '_super_attribute_code'   => 'color',
-                '_super_attribute_option' => 'red',
-                '_super_attribute_price_corr' => 5
-            ],
-            2 => [
-                '_super_products_sku'     => 'some_sku_2',
-                '_super_attribute_code'   => 'color',
-                '_super_attribute_option' => 'yellow',
-                '_super_attribute_price_corr' => 10
-            ],
-            3 => [
-                '_super_products_sku'     => 'some_sku_3',
-                '_super_attribute_code'   => 'color',
-                '_super_attribute_option' => 'green',
-                '_super_attribute_price_corr' => 15
-            ]
-        ];
-        Mage::getModel('api_import/import_api')->importEntities($myProducts);
-
-        return $myConfigurable;
     }
 
     /**
@@ -640,5 +539,4 @@ class Danslo_ApiImport_Helper_Test
 
         return $categories;
     }
-
 }

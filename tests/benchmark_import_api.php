@@ -37,59 +37,79 @@ function getBulksOfEntities($entities)
 }
 
 /**
- * Gives lines mapped to skus
+ * Gives lines mapped to entity name
+ * Each error returned by API Import is associate to the index of the line in the sent array.
+ * This method provide a way to know to which entity is linked this index.
+ * Returns [index => name, ...]
  *
- * @param $entities
+ * @param array  $entities
+ * @param string $entitiesType 'catalog_product', 'attributes', 'catalog_category'
  *
- * @return array
+ * @return array|null
  */
-function getMappedSku($entities)
+function getIndexedEntities(array $entities, $entitiesType)
 {
-    $mappedSku = array();
-    $previousSku = '';
+    // TODO add customer error management
+    switch ($entitiesType) {
+        case 'catalog_product':
+            $indexToSearch = 'sku';
+            break;
+        case 'attributes':
+            $indexToSearch = 'attribute_id';
+            break;
+        case 'catalog_category':
+            $indexToSearch = 'name';
+            break;
+        default:
+            return;
+            break;
+    }
+
+    $indexedEntities = array();
+    $previous        = '';
     foreach ($entities as $key => $entity) {
-        if (isset($entity['sku']) && !empty($entity['sku'])) {
-            $mappedSku[$key] = $entity['sku'];
-            $previousSku     = $entity['sku'];
+        if (isset($entity[$indexToSearch]) && !empty($entity[$indexToSearch])) {
+            $indexedEntities[$key] = $entity[$indexToSearch];
+            $previous              = $entity[$indexToSearch];
         } else {
-            $mappedSku[$key] = 'Associated to previous sku ' . $previousSku;
+            $indexedEntities[$key] = 'Associated to previous ' . $previous;
         }
     }
 
-    return $mappedSku;
+    return $indexedEntities;
 }
 
 /**
- * Get failed skus associated with error
+ * Get failed entities associated with error
  *
  * @param array $errors
- * @param array $mappedSku
+ * @param array $indexedEntities
  *
- * @return array[sku => error]
+ * @return array[entity => error]
  */
-function getFailedSkus(array $errors, array $mappedSku)
+function getFailedEntities(array $errors, array $indexedEntities)
 {
-    $failedSkus = array();
+    $failedEntities = array();
     foreach ($errors as $error => $failedRows) {
         foreach ($failedRows as $row) {
-            $failedSkus[$mappedSku[$row]] = $error;
+            $failedEntities[$indexedEntities[$row]] = $error;
         }
     }
 
-    return $failedSkus;
+    return $failedEntities;
 }
 
 /**
- * Prints failed skus
+ * Prints failed entities
  *
- * @param array $failedSkus
+ * @param array $failedEntities
  *
  * @return void
  */
-function printFailedSkus(array $failedSkus)
+function printFailedEntities(array $failedEntities)
 {
-    foreach ($failedSkus as $sku => $error) {
-        printf("$sku : $error" . PHP_EOL);
+    foreach ($failedEntities as $entity => $error) {
+        printf("$entity : $error" . PHP_EOL);
     }
 }
 
@@ -191,62 +211,58 @@ foreach ($entityTypes as $typeName => $entityType) {
         printf('Starting import...' . PHP_EOL);
         $totalTime = microtime(true);
 
+        $typesRelatedToAttributes = array('attributeSets', 'attributes', 'attributeAssociations');
+        $failedEntities = array();
+
         if (USE_API) {
             $bulks = getBulksOfEntities($entities);
-            $failedSkus = array();
 
-           if ('attributeSets' === $entityType['entity']
-               || 'attributes' === $entityType['entity']
-               || 'attributeAssociations' === $entityType['entity']
-           ) {
-               try {
-                   foreach ($bulks as $bulk) {
-                       $client->call(
-                           $session,
-                           'import.import' . ucfirst($entityType['entity']),
-                           array(
-                               $bulk,
-                               $entityType['behavior']
-                           )
-                       );
-                   }
-               } catch (Exception $e) {
-                   printf('Import failed: ' . PHP_EOL, $e->getMessage());
-                   var_dump($e);
-                   exit;
-               }
-           } else {
-               foreach($bulks as $bulk) {
-                   $mappedSkus = getMappedSku($bulk);
-                   try {
-                       $client->call($session, 'import.importEntities', array($bulk, $entityType['entity']));
-                   } catch (Exception $e) {
-                       $failedSkus = array_merge($failedSkus, getFailedSkus(unserialize($e->getMessage()), $mappedSkus));
-                   }
-               }
-               if (!empty($failedSkus)) {
-                   printFailedSkus($failedSkus);
-                   exit;
-               }
-           }
-        } else {
-            if ('attributeSets' === $entityType['entity']
-                || 'attributes' === $entityType['entity']
-                || 'attributeAssociations' === $entityType['entity']
-            ) {
-                $method = 'import' . ucfirst($entityType['entity']);
-                // For debugging purposes only.
-                Mage::getModel('api_import/import_api')->$method($entities, $entityType['behavior']);
-
-            } else {
-                $mappedSkus = getMappedSku($entities);
+            foreach ($bulks as $bulk) {
                 try {
-                    Mage::getModel('api_import/import_api')->importEntities($entities, $entityType['entity'], 'append');
-                } catch(Exception $e) {
-                    $failedSkus = getFailedSkus(unserialize($e->getCustomMessage()), $mappedSkus);
-                    printFailedSkus($failedSkus);
-                    exit;
+                    $indexedEntities = getIndexedEntities($bulk, $entityType['entity']);
+                    if (in_array($entityType['entity'], $typesRelatedToAttributes)) {
+                        $client->call(
+                            $session,
+                            'import.import' . ucfirst($entityType['entity']),
+                            array(
+                                $bulk,
+                                $entityType['behavior']
+                            )
+                        );
+                    } else {
+                        $client->call($session, 'import.importEntities', array($bulk, $entityType['entity']));
+                    }
+                } catch (Exception $e) {
+                    $errors = json_decode($e->getMessage(), true);
+
+                    if (null !== $errors) {
+                        $failedEntities = array_merge(
+                            $failedEntities,
+                            getFailedEntities($errors, $indexedEntities)
+                        );
+                    } else {
+                        printf($e->getMessage() . PHP_EOL);
+                    }
                 }
+            }
+            if (!empty($failedEntities)) {
+                printFailedEntities($failedEntities);
+            }
+        } else {
+            try {
+                $indexedEntities = getIndexedEntities($entities, $entityType['entity']);
+                if (in_array($entityType['entity'], $typesRelatedToAttributes)) {
+                    $method = 'import' . ucfirst($entityType['entity']);
+                    Mage::getModel('api_import/import_api')->$method($entities, $entityType['behavior']);
+                } else {
+                    Mage::getModel('api_import/import_api')->importEntities($entities, $entityType['entity'], 'append');
+                }
+            } catch (Mage_Api_Exception $e) {
+                $errors = json_decode($e->getCustomMessage(), true);
+                $failedEntities = getFailedEntities($errors, $indexedEntities);
+                printFailedEntities($failedEntities);
+            } catch (Exception $e) {
+                printf($e->getMessage() . PHP_EOL);
             }
         }
         printf('Done! Magento reports %d %s.' . PHP_EOL, count($entities), 'rows');
