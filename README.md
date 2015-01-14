@@ -13,15 +13,44 @@ Additionally, ApiImport is 100% free from rewrites - making it upgrade-proof and
 
 ## How do I install ApiImport?
 
-ApiImport is a [modman](https://github.com/colinmollenhour/modman) module. Simply install modman and execute the following command:
+ApiImport is both [modman](https://github.com/colinmollenhour/modman) and [composer](https://getcomposer.org/download/) compatible.
+
+### Install directly with modman
 
 ``./modman clone ApiImport https://github.com/danslo/ApiImport.git``
+
+### Install through composer
+
+Add something like the following to your ``composer.json``:
+
+```json
+{
+    "require": {
+        "danslo/api-import": "1.1.0"
+    },
+    "extra": {
+        "magento-root-dir": "htdocs/"
+    },
+    "repositories": [
+        {
+            "type": "vcs",
+            "url": "https://github.com/danslo/ApiImport.git"
+        },
+        {
+            "type": "composer",
+            "url": "http://packages.firegento.com"
+        }
+    ]
+}
+```
+
+Afterwards, issue the ``composer install`` command.
 
 ## How do I use ApiImport?
 
 ### Access it directly through Magento models
 
-``` php
+```php
 <?php
 
 require_once 'app/Mage.php';
@@ -33,39 +62,52 @@ $api->importEntities($anArrayWithYourEntities, $entityType, $optionalImportBehav
 ```
 ### Access it through the Magento Webservices API (any SOAP/XMLRPC capable language)
 
-``` php
+```php
 <?php
 
 require_once 'app/Mage.php';
 
 Mage::init();
 
-/*
- * Get an XmlRpc client.
- */
-$client = new Zend_XmlRpc_Client(Mage::getBaseUrl(Mage_Core_Model_Store::URL_TYPE_WEB) . 'api/xmlrpc/');
+// Get an XMLRPC client.
+$client = new Zend_XmlRpc_Client(
+    Mage::getBaseUrl(Mage_Core_Model_Store::URL_TYPE_WEB) . 'api/xmlrpc/');
 
-/*
- * Set an infinite time-out.
- */
+// For testing, just set an infinite timeout.
 $client->getHttpClient()->setConfig(array('timeout' => -1));
 
-/*
- * Login to webservices and obtain session.
- */
+// Login to the API and get a session token.
 $session = $client->call('login', array($yourApiUser, $yourApiKey));
 
-/*
- * Do your import.
- */
-$client->call('call', array($session, 'import.importEntities', array($anArrayWithYourEntities, $entityType, $optionalImportBehavior)));
-$client->call('call', array($session, 'import.importAttributeSets', array($anArrayWithYourEntities, $optionalImportBehavior)));
-$client->call('call', array($session, 'import.importAttributes', array($anArrayWithYourEntities, $optionalImportBehavior)));
-$client->call('call', array($session, 'import.importAttributeAssociations', array($anArrayWithYourEntities, $optionalImportBehavior)));
+// Import regular entities (products, categories, customers).
+$client->call('call', array(
+    $session, 
+    'import.importEntities', 
+    array($anArrayWithYourEntities, $entityType, $optionalImportBehavior)
+));
 
-/*
- * Clean up.
- */
+// Import attribute sets.
+$client->call('call', array(
+    $session,
+    'import.importAttributeSets',
+    array($anArrayWithYourAttributeSets, $optionalImportBehavior)
+));
+
+// Import attributes.
+$client->call('call', array(
+    $session, 
+    'import.importAttributes', 
+    array($anArrayWithYourAttributes, $optionalImportBehavior)
+));
+
+// Import attribute assocations.
+$client->call('call', array(
+    $session, 
+    'import.importAttributeAssociations', 
+    array($anArrayWithYourAssociations, $optionalImportBehavior)
+));
+
+// End our session.
 $client->call('endSession', array($session));
 ```
 
@@ -99,11 +141,11 @@ Magento will choose a replace behavior by default. If you would like to use anot
 4. ``Danslo_ApiImport_Model_Import::BEHAVIOR_STOCK`` - Magento normally requires ``sku``, ``_type``, ``_attribute_set``. This is not useful when you simply want to update stock of existing entities. With this behavior you can simply specify ``sku`` and ``qty``!
 5. ``Danslo_ApiImport_Model_Import::BEHAVIOR_DELETE_IF_NOT_EXIST`` - Works with attributes, attribute sets and attribute associations import. Any data you do not specify in your array will be deleted! Send your array, data that there are in Magento and not in your array are deleted.
 
-## Example for updating stock 
+## What if I only want to update stock?
 
-Sure!
+Just import using the BEHAVIOR_STOCK behavior. See an example below:
 
-``` php
+```php
 <?php
 
 require_once 'app/Mage.php';
@@ -185,3 +227,19 @@ The following is a very simple benchmark run done on a Virtual Machine running D
     Products per second: 79.931292s
     Products per hour:   287752.652192s
     =======================================
+
+## License
+
+Copyright 2014 Daniel Sloof
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
