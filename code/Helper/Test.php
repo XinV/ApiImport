@@ -77,6 +77,10 @@ class Danslo_ApiImport_Helper_Test
         'default_sort_by'   => 'position'
     );
 
+    protected $_categories = [
+        '', 'sub cat 1', 'sub cat 1/sub cat 11', 'sub cat 2', 'sub cat 2/sub cat 21'
+    ];
+
     /**
      * Some attribute types used for attributes creation
      *
@@ -241,6 +245,54 @@ class Danslo_ApiImport_Helper_Test
     }
 
     /**
+     * Generates random simple products.
+     *
+     * @param int $numProducts
+     * @return array
+     */
+    public function generateRandomSimpleFailProduct($numProducts)
+    {
+        $products = array();
+
+        for ($i = 1; $i <= ($numProducts/2); $i++) {
+            $products[$i - 1] = array_merge(
+                $this->_defaultProductAttributes,
+                array(
+                    'sku'    => 'some_sku_' . ($i),
+                    '_type'  => Mage_Catalog_Model_Product_Type::TYPE_SIMPLE,
+                    'name'   => 'Some product ( ' . ($i) . ' )',
+                    'price'  => rand(1, 1000),
+                    'weight' => rand(1, 3000),
+                    'qty'    => rand(1, 30),
+                    '_category' => $this->_categories[rand(0,4)],
+                    '_root_category' => 'Default Category'
+                )
+            );
+        }
+
+        for ($i = ($numProducts/2 + 1); $i <= $numProducts ; $i++) {
+            $moreProducts[$i - 1] = array(
+                'description'       => 'Some description',
+                '_attribute_set'    => 'Defau',
+                'short_description' => 'Some short description',
+                '_product_websites' => 'base',
+                'status'            => Mage_Catalog_Model_Product_Status::STATUS_ENABLED,
+                'visibility'        => Mage_Catalog_Model_Product_Visibility::VISIBILITY_BOTH,
+                'tax_class_id'      => 0,
+                'is_in_stock'       => 1,
+                'sku'    => 'some_sku_' . ($i),
+                '_type'  => Mage_Catalog_Model_Product_Type::TYPE_SIMPLE,
+                'name'   => 'Some product ( ' . ($i) . ' )',
+                'price'  => rand(1, 1000),
+                'weight' => rand(1, 3000),
+                'qty'    => rand(1, 30)
+            );
+        }
+//die(var_dump(array_merge($products, $moreProducts)));
+        return array_merge($products, $moreProducts);
+    }
+
+    /**
      * Generates random simple products with image.
      *
      * @param int $numProducts
@@ -309,6 +361,107 @@ class Danslo_ApiImport_Helper_Test
         }
 
         return $products;
+    }
+
+    /**
+     * Export price mapping configurables
+     *
+     * @param $trolol
+     *
+     * @return array
+     */
+    public function generateRandomCustoProduct($trolol)
+    {
+        $myProducts = [
+            1 => [
+                'description'       => 'Some description',
+                '_attribute_set'    => 'Default',
+                'short_description' => 'Some short description',
+                '_product_websites' => 'base',
+                'status'       => 1,
+                'visibility'   => 4,
+                'tax_class_id' => 0,
+                'is_in_stock'  => 1,
+                'sku'          => 'some_sku_1',
+                '_type'        => 'simple',
+                'name'         => 'Some product ( 1 )',
+                'price'        => 30,
+                'weight'       => 200,
+                'qty'          => 23,
+                'color'        => 'red'
+            ],
+            2 => [
+                'description'       => 'Some description',
+                '_attribute_set'    => 'Default',
+                'short_description' => 'Some short description',
+                '_product_websites' => 'base',
+                'status'       => 1,
+                'visibility'   => 4,
+                'tax_class_id' => 0,
+                'is_in_stock'  => 1,
+                'sku'          => 'some_sku_2',
+                '_type'        => 'simple',
+                'name'         => 'Some product ( 2 )',
+                'price'        => 10,
+                'weight'       => 200,
+                'qty'          => 23,
+                'color'        => 'yellow'
+            ],
+            3 => [
+                'description'       => 'Some description',
+                '_attribute_set'    => 'Default',
+                'short_description' => 'Some short description',
+                '_product_websites' => 'base',
+                'status'       => 1,
+                'visibility'   => 4,
+                'tax_class_id' => 0,
+                'is_in_stock'  => 1,
+                'sku'          => 'some_sku_3',
+                '_type'        => 'simple',
+                'name'         => 'Some product ( 3 )',
+                'price'        => 15,
+                'weight'       => 200,
+                'qty'          => 24,
+                'color'        => 'green'
+            ],
+        ];
+
+        $myConfigurable = [
+            1 => [
+                'description'       => 'Some description',
+                '_attribute_set'    => 'Default',
+                'short_description' => 'Some short description',
+                '_product_websites' => 'base',
+                'status'            => 1,
+                'visibility'        => 4,
+                'tax_class_id'      => 0,
+                'is_in_stock'       => 1,
+                'sku'    => 'some_configurable_1',
+                '_type'  => 'configurable',
+                'name'   => 'Some configurable ( 1 )',
+                'price'  => 25,
+                'weight' => 20,
+                '_super_products_sku'     => 'some_sku_1',
+                '_super_attribute_code'   => 'color',
+                '_super_attribute_option' => 'red',
+                '_super_attribute_price_corr' => 5
+            ],
+            2 => [
+                '_super_products_sku'     => 'some_sku_2',
+                '_super_attribute_code'   => 'color',
+                '_super_attribute_option' => 'yellow',
+                '_super_attribute_price_corr' => 10
+            ],
+            3 => [
+                '_super_products_sku'     => 'some_sku_3',
+                '_super_attribute_code'   => 'color',
+                '_super_attribute_option' => 'green',
+                '_super_attribute_price_corr' => 15
+            ]
+        ];
+        Mage::getModel('api_import/import_api')->importEntities($myProducts);
+
+        return $myConfigurable;
     }
 
     /**

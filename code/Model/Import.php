@@ -87,10 +87,22 @@ class Danslo_ApiImport_Model_Import
             )
         );
 
+        $errors = $this->getErrors();
+
         // We circumvent validateSource, so we output the errors (if any) ourselves here.
-        foreach ($this->getErrors() as $errorCode => $rows) {
+        foreach ($errors as $errorCode => $rows) {
             $this->addLogComment($errorCode . ' ' . Mage::helper('importexport')->__('in rows') . ': ' . implode(', ', $rows));
         }
+
+        if (!empty($errors)) {
+            foreach ($errors as &$error) {
+                foreach ($error as &$row) {
+                    $row -= 2;
+                }
+            }
+            throw new Mage_Core_Exception(serialize($errors));
+        }
+
         return $result;
     }
 
