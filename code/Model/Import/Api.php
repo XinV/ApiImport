@@ -65,6 +65,11 @@ class Danslo_ApiImport_Model_Import_Api
         $this->_api->getDataSourceModel()->setEntities($entities);
         try {
             $result = $this->_api->importSource();
+            $errorsCount = $this->_api->getErrorsCount();
+            if ($errorsCount > 0) {
+                Mage::throwException("There were {$errorsCount} errors during the import process." .
+                    "Please be aware that valid entities were still imported.");
+            };
         } catch(Mage_Core_Exception $e) {
             $this->_fault('import_failed', $e->getMessage());
         }
@@ -85,23 +90,18 @@ class Danslo_ApiImport_Model_Import_Api
         if (null === $behavior) {
             $behavior = Mage_ImportExport_Model_Import::BEHAVIOR_APPEND;
         }
-
         $this->_init();
 
         if (Danslo_ApiImport_Model_Import::BEHAVIOR_DELETE_IF_NOT_EXIST === $behavior) {
             $this->_pruneAttributes($data);
         } else {
-
             foreach ($data as $attribute) {
-
                 if (isset($attribute['attribute_id'])) {
-
                     $attributeCode = $attribute['attribute_id'];
                     unset($attribute['attribute_id']);
 
                     if (Mage_ImportExport_Model_Import::BEHAVIOR_REPLACE === $behavior
-                        || Mage_ImportExport_Model_Import::BEHAVIOR_APPEND === $behavior
-                    ) {
+                        || Mage_ImportExport_Model_Import::BEHAVIOR_APPEND === $behavior) {
                         $this->_setup->addAttribute($this->_catalogProductEntityTypeId, $attributeCode, $attribute);
                     } elseif (Mage_ImportExport_Model_Import::BEHAVIOR_DELETE === $behavior) {
                         $this->_setup->removeAttribute($this->_catalogProductEntityTypeId, $attributeCode);
@@ -126,14 +126,12 @@ class Danslo_ApiImport_Model_Import_Api
         if (null === $behavior) {
             $behavior = Mage_ImportExport_Model_Import::BEHAVIOR_APPEND;
         }
-
         $this->_init();
 
         if (Mage_ImportExport_Model_Import::BEHAVIOR_DELETE === $behavior) {
             $this->_removeAttributeSets($data);
         } elseif (Mage_ImportExport_Model_Import::BEHAVIOR_REPLACE === $behavior
-            || Mage_ImportExport_Model_Import::BEHAVIOR_APPEND === $behavior
-        ) {
+            || Mage_ImportExport_Model_Import::BEHAVIOR_APPEND === $behavior) {
             $this->_updateAttributeSets($data);
         } elseif (Danslo_ApiImport_Model_Import::BEHAVIOR_DELETE_IF_NOT_EXIST === $behavior) {
             $this->_pruneAttributeSets($data);
@@ -155,14 +153,12 @@ class Danslo_ApiImport_Model_Import_Api
         if (null === $behavior) {
             $behavior = Mage_ImportExport_Model_Import::BEHAVIOR_APPEND;
         }
-
         $this->_init();
 
         if (Mage_ImportExport_Model_Import::BEHAVIOR_DELETE === $behavior) {
             $this->_removeAttributeFromGroup($data);
         } elseif (Mage_ImportExport_Model_Import::BEHAVIOR_REPLACE === $behavior
-            || Mage_ImportExport_Model_Import::BEHAVIOR_APPEND === $behavior
-        ) {
+            || Mage_ImportExport_Model_Import::BEHAVIOR_APPEND === $behavior) {
             $this->_updateAttributeAssociations($data);
         } elseif (Danslo_ApiImport_Model_Import::BEHAVIOR_DELETE_IF_NOT_EXIST === $behavior) {
             $this->_pruneAttributesFromAttributeSets($data);
@@ -261,7 +257,7 @@ class Danslo_ApiImport_Model_Import_Api
             ->where('entity_type_id = :entity_type_id');
         $bind = array('entity_type_id' => $this->_catalogProductEntityTypeId);
 
-        $givenAssociations = [];
+        $givenAssociations = array();
         foreach ($data as $attribute) {
             $setId = $this->_setup->getAttributeSetId($entityTypeId, $attribute['attribute_set_id']);
             $givenAssociations[] = array(
@@ -276,9 +272,8 @@ class Danslo_ApiImport_Model_Import_Api
 
         }
 
-        $deletedRows = [];
+        $deletedRows = array();
         foreach ($this->_setup->getConnection()->fetchAssoc($query, $bind) as $magAssociation) {
-
             $rowFound = false;
             while ((list($key, $association) = each($givenAssociations)) && $rowFound === false) {
                 if ($association['attribute_id'] === $magAssociation['attribute_id']
@@ -348,10 +343,10 @@ class Danslo_ApiImport_Model_Import_Api
         $entityTypeId = $this->_catalogProductEntityTypeId;
         foreach ($data as $attributeSet) {
             $attrSetName     = $attributeSet['attribute_set_name'];
-            $sortOrder       = $attributeSet['sortOrder'];
+            $sortOrder       = $attributeSet['sort_order'];
             $attributeGroups = $attributeSet;
             unset($attributeGroups['attribute_set_name']);
-            unset($attributeGroups['sortOrder']);
+            unset($attributeGroups['sort_order']);
 
             $this->_setup->addAttributeSet($entityTypeId, $attrSetName, $sortOrder);
 
@@ -381,7 +376,7 @@ class Danslo_ApiImport_Model_Import_Api
     {
         $entityTypeId         = $this->_catalogProductEntityTypeId;
         $magAttributeSetsName = $this->_getAttributeSetsNameAsArray();
-        $attributeSetsName    = [];
+        $attributeSetsName    = array();
 
         foreach ($data as $attributeSet) {
             $attributeSetsName[] = $attributeSet['attribute_set_name'];
@@ -396,7 +391,7 @@ class Danslo_ApiImport_Model_Import_Api
             $attrSetName     = $attributeSet['attribute_set_name'];
             $attributeGroups = $attributeSet;
             unset($attributeGroups['attribute_set_name']);
-            unset($attributeGroups['sortOrder']);
+            unset($attributeGroups['sort_order']);
 
             $attrSetId = $this->_setup->getAttributeSet($entityTypeId, $attrSetName, 'attribute_set_id');
 
@@ -421,7 +416,7 @@ class Danslo_ApiImport_Model_Import_Api
             ->getCollection()
             ->setEntityTypeFilter($this->_catalogProductEntityTypeId);
 
-        $attributeSetsName = [];
+        $attributeSetsName = array();
         foreach ($attributeSetCollection as $attrSet) {
             $attrSetAsArray      = $attrSet->getData();
             $attributeSetsName[] = $attrSetAsArray['attribute_set_name'];
@@ -448,7 +443,7 @@ class Danslo_ApiImport_Model_Import_Api
 
         $bind = array('attribute_set_id' => $attrSetId);
 
-        $currentGroups = [];
+        $currentGroups = array();
         foreach ($connexion->fetchAssoc($getOldGroupsQuery, $bind) as $attrGroup) {
             $currentGroups[$attrGroup['attribute_group_name']] = $attrGroup['sort_order'];
         }
