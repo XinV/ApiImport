@@ -55,10 +55,14 @@ function getIndexedEntities(array $entities, $entitiesType)
             $indexToSearch = 'sku';
             break;
         case 'attributes':
+        case 'attributeAssociations':
             $indexToSearch = 'attribute_id';
             break;
         case 'catalog_category':
             $indexToSearch = 'name';
+            break;
+        case 'attributeSets' :
+            $indexToSearch = 'attribute_set_name';
             break;
         default:
             return;
@@ -72,7 +76,7 @@ function getIndexedEntities(array $entities, $entitiesType)
             $indexedEntities[$key] = $entity[$indexToSearch];
             $previous              = $entity[$indexToSearch];
         } else {
-            $indexedEntities[$key] = 'Associated to previous ' . $previous;
+            $indexedEntities[$key] = 'Associated to ' . $previous;
         }
     }
 

@@ -140,6 +140,10 @@ class Danslo_ApiImport_Model_Import_Api
             $this->_pruneAttributeSets($data);
         }
 
+        if (count($this->_errors) > 0) {
+            throw new Mage_Api_Exception('import_failed', json_encode($this->_errors));
+        }
+
         return true;
     }
 
@@ -165,6 +169,10 @@ class Danslo_ApiImport_Model_Import_Api
             $this->_updateAttributeAssociations($data);
         } elseif (Danslo_ApiImport_Model_Import::BEHAVIOR_DELETE_IF_NOT_EXIST === $behavior) {
             $this->_pruneAttributesFromAttributeSets($data);
+        }
+
+        if (count($this->_errors) > 0) {
+            throw new Mage_Api_Exception('import_failed', json_encode($this->_errors));
         }
 
         return true;
@@ -430,14 +438,18 @@ class Danslo_ApiImport_Model_Import_Api
      */
     protected function _updateAttributeAssociations(array $data)
     {
-        foreach ($data as $attribute) {
-            $this->_setup->addAttributeToGroup(
-                $this->_catalogProductEntityTypeId,
-                $attribute['attribute_set_id'],
-                $attribute['attribute_group_id'],
-                $attribute['attribute_id'],
-                $attribute['sort_order']
-            );
+        foreach ($data as $id => $attribute) {
+            try {
+                $this->_setup->addAttributeToGroup(
+                    $this->_catalogProductEntityTypeId,
+                    $attribute['attribute_set_id'],
+                    $attribute['attribute_group_id'],
+                    $attribute['attribute_id'],
+                    $attribute['sort_order']
+                );
+            } catch (\Exception $e) {
+                $this->_errors[$e->getMessage()][] = $id;
+            }
         }
     }
 
@@ -465,26 +477,30 @@ class Danslo_ApiImport_Model_Import_Api
     protected function _updateAttributeSets(array $data)
     {
         $entityTypeId = $this->_catalogProductEntityTypeId;
-        foreach ($data as $attributeSet) {
+        foreach ($data as $id => $attributeSet) {
             $attrSetName     = $attributeSet['attribute_set_name'];
             $sortOrder       = $attributeSet['sort_order'];
             $attributeGroups = $attributeSet;
             unset($attributeGroups['attribute_set_name']);
             unset($attributeGroups['sort_order']);
 
-            $this->_setup->addAttributeSet($entityTypeId, $attrSetName, $sortOrder);
+            try {
+                $this->_setup->addAttributeSet($entityTypeId, $attrSetName, $sortOrder);
 
-            $attrSetId = $this->_setup->getAttributeSet($entityTypeId, $attrSetName, 'attribute_set_id');
+                $attrSetId = $this->_setup->getAttributeSet($entityTypeId, $attrSetName, 'attribute_set_id');
 
-            $currentGroups = $this->_getAttributeGroups($attrSetId);
+                $currentGroups = $this->_getAttributeGroups($attrSetId);
 
-            $groupsToRemove = array_keys(array_diff_key($currentGroups, $attributeGroups));
-            foreach ($groupsToRemove as $groupToRemoveName) {
-                unset($currentGroups[$groupToRemoveName]);
-            }
+                $groupsToRemove = array_keys(array_diff_key($currentGroups, $attributeGroups));
+                foreach ($groupsToRemove as $groupToRemoveName) {
+                    unset($currentGroups[$groupToRemoveName]);
+                }
 
-            foreach ($attributeGroups as $groupName => $groupSortOrder) {
-                $this->_setup->addAttributeGroup($entityTypeId, $attrSetId, $groupName, $groupSortOrder);
+                foreach ($attributeGroups as $groupName => $groupSortOrder) {
+                    $this->_setup->addAttributeGroup($entityTypeId, $attrSetId, $groupName, $groupSortOrder);
+                }
+            } catch (\Exception $e) {
+                $this->_errors[$e->getMessage()][] = $id;
             }
         }
     }
